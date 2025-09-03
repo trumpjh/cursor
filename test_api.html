@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEIS API 테스트</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .result { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .error { color: red; }
+        .success { color: green; }
+        button { padding: 10px 20px; margin: 10px 5px; }
+        pre { background: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>NEIS API 테스트</h1>
+        <p>오늘 날짜: <span id="today-date"></span></p>
+        <button onclick="testAPI()">API 테스트 실행</button>
+        <button onclick="testDifferentDates()">다른 날짜들 테스트</button>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_KEY = 'b73f7206adf743c7b18aec1ab514d19b';
+        const SCHOOL_INFO = {
+            officeCode: 'C10',
+            schoolCode: '7530567',
+            schoolName: '대양고등학교'
+        };
+
+        // 오늘 날짜 표시
+        document.getElementById('today-date').textContent = new Date().toLocaleDateString('ko-KR');
+
+        async function testAPI(date = null) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result">API 테스트 중...</div>';
+
+            try {
+                let ymd;
+                if (date) {
+                    ymd = date;
+                } else {
+                    const today = new Date();
+                    ymd = today.getFullYear().toString() + 
+                          String(today.getMonth() + 1).padStart(2, '0') + 
+                          String(today.getDate()).padStart(2, '0');
+                }
+
+                const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${SCHOOL_INFO.officeCode}&SD_SCHUL_CODE=${SCHOOL_INFO.schoolCode}&MLSV_YMD=${ymd}`;
+                
+                resultDiv.innerHTML = `<div class="result">
+                    <h3>API 요청 정보</h3>
+                    <p><strong>URL:</strong> ${url}</p>
+                    <p><strong>날짜:</strong> ${ymd}</p>
+                    <p><strong>학교:</strong> ${SCHOOL_INFO.schoolName}</p>
+                </div>`;
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                let resultHTML = `<div class="result">
+                    <h3>API 응답 결과</h3>
+                    <p><strong>HTTP 상태:</strong> ${response.status} ${response.statusText}</p>
+                    <p><strong>응답 크기:</strong> ${JSON.stringify(data).length} 문자</p>
+                `;
+
+                if (data.mealServiceDietInfo) {
+                    resultHTML += `<p class="success"><strong>✓ mealServiceDietInfo 존재</strong></p>`;
+                    
+                    if (data.mealServiceDietInfo[0] && data.mealServiceDietInfo[0].head) {
+                        const head = data.mealServiceDietInfo[0].head;
+                        resultHTML += `<p><strong>헤더 정보:</strong></p>`;
+                        resultHTML += `<pre>${JSON.stringify(head, null, 2)}</pre>`;
+                        
+                        if (head[1] && head[1].RESULT) {
+                            const result = head[1].RESULT;
+                            resultHTML += `<p><strong>결과 코드:</strong> ${result.CODE}</p>`;
+                            resultHTML += `<p><strong>결과 메시지:</strong> ${result.MSG || '없음'}</p>`;
+                        }
+                    }
+                    
+                    if (data.mealServiceDietInfo[1] && data.mealServiceDietInfo[1].row) {
+                        const rows = data.mealServiceDietInfo[1].row;
+                        resultHTML += `<p class="success"><strong>✓ 급식 데이터 ${rows.length}개 발견</strong></p>`;
+                        resultHTML += `<pre>${JSON.stringify(rows, null, 2)}</pre>`;
+                    } else {
+                        resultHTML += `<p class="error"><strong>✗ 급식 데이터 없음</strong></p>`;
+                    }
+                } else {
+                    resultHTML += `<p class="error"><strong>✗ mealServiceDietInfo 없음</strong></p>`;
+                }
+
+                resultHTML += `<h3>전체 응답 데이터</h3>`;
+                resultHTML += `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                resultHTML += '</div>';
+
+                resultDiv.innerHTML = resultHTML;
+
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result error">
+                    <h3>오류 발생</h3>
+                    <p><strong>오류:</strong> ${error.message}</p>
+                    <p><strong>스택:</strong> ${error.stack}</p>
+                </div>`;
+            }
+        }
+
+        async function testDifferentDates() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="result">여러 날짜 테스트 중...</div>';
+
+            const dates = [
+                '20250901', // 9월 1일 (월요일)
+                '20250902', // 9월 2일 (화요일)
+                '20250903', // 9월 3일 (수요일) - 오늘
+                '20250904', // 9월 4일 (목요일)
+                '20250905', // 9월 5일 (금요일)
+                '20250826', // 8월 26일 (화요일) - 방학 중
+                '20250827', // 8월 27일 (수요일) - 방학 중
+                '20250828', // 8월 28일 (목요일) - 방학 중
+                '20250829', // 8월 29일 (금요일) - 방학 중
+                '20250830', // 8월 30일 (토요일) - 주말
+            ];
+
+            let resultHTML = '<div class="result"><h3>여러 날짜 테스트 결과</h3>';
+            
+            for (const date of dates) {
+                try {
+                    const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${SCHOOL_INFO.officeCode}&SD_SCHUL_CODE=${SCHOOL_INFO.schoolCode}&MLSV_YMD=${date}`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    
+                    let hasData = false;
+                    let resultCode = 'N/A';
+                    let resultMsg = 'N/A';
+                    
+                    if (data.mealServiceDietInfo && data.mealServiceDietInfo[0] && data.mealServiceDietInfo[0].head) {
+                        const head = data.mealServiceDietInfo[0].head;
+                        if (head[1] && head[1].RESULT) {
+                            resultCode = head[1].RESULT.CODE;
+                            resultMsg = head[1].RESULT.MSG || '없음';
+                        }
+                    }
+                    
+                    if (data.mealServiceDietInfo && data.mealServiceDietInfo[1] && data.mealServiceDietInfo[1].row) {
+                        hasData = data.mealServiceDietInfo[1].row.length > 0;
+                    }
+                    
+                    const status = hasData ? '✅' : '❌';
+                    const dateStr = `${date.substring(0,4)}-${date.substring(4,6)}-${date.substring(6,8)}`;
+                    
+                    resultHTML += `<p><strong>${dateStr}</strong> ${status} | 코드: ${resultCode} | 메시지: ${resultMsg}</p>`;
+                    
+                } catch (error) {
+                    resultHTML += `<p><strong>${date}</strong> ❌ | 오류: ${error.message}</p>`;
+                }
+            }
+            
+            resultHTML += '</div>';
+            resultDiv.innerHTML = resultHTML;
+        }
+    </script>
+</body>
+</html>
