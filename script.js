@@ -29,9 +29,14 @@ async function fetchHighSchools(regionName) {
   const url = `https://open.neis.go.kr/hub/schoolInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${officeCode}&SCHUL_KND_SC_NM=고등학교&pSize=1000`;
   const res = await fetch(url);
   if (!res.ok) return [];
-  const data = await res.json();
-  if (!data.schoolInfo || data.schoolInfo[0].head[1].RESULT.CODE !== 'INFO-000') return [];
-  return data.schoolInfo[1].row;
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    return [];
+  }
+  if (!data.schoolInfo || !data.schoolInfo[0]?.head?.[1]?.RESULT || data.schoolInfo[0].head[1].RESULT.CODE !== 'INFO-000') return [];
+  return data.schoolInfo[1]?.row || [];
 }
 
 // 급식 정보 조회
@@ -40,15 +45,33 @@ async function fetchMeal(officeCode, schoolCode, date) {
   const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${officeCode}&SD_SCHUL_CODE=${schoolCode}&MLSV_YMD=${ymd}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP 오류: ${res.status} ${res.statusText}`);
-  const data = await res.json();
+  const raw = await res.text();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`응답을 JSON으로 파싱하지 못했습니다. 원문: ${raw.slice(0, 200)}...`);
+  }
+  // 진단용 로그
+  console.log('NEIS 응답:', data);
   return data;
 }
 
 // 급식 데이터 파싱
 function parseMealData(data) {
+  // mealServiceDietInfo가 없으면 가능한 오류 메시지를 유추해서 보여준다
   if (!data.mealServiceDietInfo) {
-    return '급식 정보를 찾을 수 없습니다. (API 응답 구조 오류)';
+    const head = data?.RESULT || data?.mealServiceDietInfo?.[0]?.head;
+    let code, msg;
+    if (Array.isArray(head)) {
+      const result = head.find(h => h.RESULT)?.RESULT;
+      code = result?.CODE; msg = result?.MSG;
+    } else if (head) {
+      code = head.CODE; msg = head.MSG;
+    }
+    return `급식 정보를 찾을 수 없습니다. (API 응답 구조 오류${code ? ` / 코드: ${code}` : ''}${msg ? ` / 메시지: ${msg}` : ''})`;
   }
+
   const header = data.mealServiceDietInfo[0];
   if (!header || !header.head || !header.head[1] || !header.head[1].RESULT) {
     return 'API 응답 형식이 올바르지 않습니다.';
@@ -97,7 +120,7 @@ const dateInput = document.getElementById('date');
   dateInput.value = `${yyyy}-${mm}-${dd}`;
 })();
 
-// 지역 선택 시 고등학교 목록 갱신
+// 지역 선택 시 고등학교 목록 갱신 + 대양고 자동 선택
 regionSelect.addEventListener('change', async () => {
   const region = regionSelect.value;
   schoolSelect.innerHTML = '<option value="">불러오는 중...</option>';
@@ -113,7 +136,17 @@ regionSelect.addEventListener('change', async () => {
     }
     schoolSelect.innerHTML = '<option value="">고등학교 선택</option>' +
       schools.map(s => `<option value="${s.ATPT_OFCDC_SC_CODE}|${s.SD_SCHUL_CODE}|${s.SCHUL_NM}">${s.SCHUL_NM}</option>`).join('');
-  } catch {
+
+    // 부산이면 대양고등학교 자동 선택 시도
+    if (region === '부산광역시') {
+      const options = Array.from(schoolSelect.options);
+      const dy = options.find(o => o.textContent.includes('대양고'));
+      if (dy) {
+        schoolSelect.value = dy.value;
+      }
+    }
+  } catch (e) {
+    console.error(e);
     schoolSelect.innerHTML = '<option value="">학교 목록을 불러올 수 없습니다</option>';
   }
 });
