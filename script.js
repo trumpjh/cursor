@@ -1,18 +1,43 @@
 // NEIS OpenAPI 키를 직접 코드에 하드코딩
 const API_KEY = 'b73f7206adf743c7b18aec1ab514d19b';
 
-// 고정: 부산광역시 대양고등학교
-const SCHOOL_INFO = {
-  officeCode: 'C10',      // 부산광역시교육청
-  schoolCode: '7530567',  // 대양고등학교
-  schoolName: '대양고등학교'
+// 지역명 → NEIS 지역코드 매핑
+const regionToCode = {
+  '서울특별시': 'B10',
+  '부산광역시': 'C10',
+  '대구광역시': 'D10',
+  '인천광역시': 'E10',
+  '광주광역시': 'F10',
+  '대전광역시': 'G10',
+  '울산광역시': 'H10',
+  '세종특별자치시': 'I10',
+  '경기도': 'J10',
+  '강원도': 'K10',
+  '충청북도': 'M10',
+  '충청남도': 'N10',
+  '전라북도': 'P10',
+  '전라남도': 'Q10',
+  '경상북도': 'R10',
+  '경상남도': 'S10',
+  '제주특별자치도': 'T10',
 };
 
-// 급식 정보 조회 (지정된 날짜: yyyy-MM-dd)
-async function fetchMeal(date) {
-  if (!date) throw new Error('날짜가 필요합니다.');
+// 고등학교 목록 불러오기 (지역별)
+async function fetchHighSchools(regionName) {
+  const officeCode = regionToCode[regionName];
+  if (!officeCode) return [];
+  const url = `https://open.neis.go.kr/hub/schoolInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${officeCode}&SCHUL_KND_SC_NM=고등학교&pSize=1000`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data.schoolInfo || data.schoolInfo[0].head[1].RESULT.CODE !== 'INFO-000') return [];
+  return data.schoolInfo[1].row;
+}
+
+// 급식 정보 조회
+async function fetchMeal(officeCode, schoolCode, date) {
   const ymd = date.replace(/-/g, '');
-  const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${SCHOOL_INFO.officeCode}&SD_SCHUL_CODE=${SCHOOL_INFO.schoolCode}&MLSV_YMD=${ymd}`;
+  const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?KEY=${API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${officeCode}&SD_SCHUL_CODE=${schoolCode}&MLSV_YMD=${ymd}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP 오류: ${res.status} ${res.statusText}`);
   const data = await res.json();
@@ -57,6 +82,8 @@ function formatDate(dateStr) {
 }
 
 // DOM 요소
+const regionSelect = document.getElementById('region');
+const schoolSelect = document.getElementById('school-name');
 const form = document.getElementById('meal-form');
 const resultDiv = document.getElementById('result');
 const dateInput = document.getElementById('date');
@@ -70,34 +97,50 @@ const dateInput = document.getElementById('date');
   dateInput.value = `${yyyy}-${mm}-${dd}`;
 })();
 
+// 지역 선택 시 고등학교 목록 갱신
+regionSelect.addEventListener('change', async () => {
+  const region = regionSelect.value;
+  schoolSelect.innerHTML = '<option value="">불러오는 중...</option>';
+  if (!region) {
+    schoolSelect.innerHTML = '<option value="">먼저 지역을 선택하세요</option>';
+    return;
+  }
+  try {
+    const schools = await fetchHighSchools(region);
+    if (schools.length === 0) {
+      schoolSelect.innerHTML = '<option value="">해당 지역에 고등학교가 없습니다</option>';
+      return;
+    }
+    schoolSelect.innerHTML = '<option value="">고등학교 선택</option>' +
+      schools.map(s => `<option value="${s.ATPT_OFCDC_SC_CODE}|${s.SD_SCHUL_CODE}|${s.SCHUL_NM}">${s.SCHUL_NM}</option>`).join('');
+  } catch {
+    schoolSelect.innerHTML = '<option value="">학교 목록을 불러올 수 없습니다</option>';
+  }
+});
+
 // 폼 제출 시 급식 조회
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
   resultDiv.innerHTML = '조회 중...';
+  const schoolValue = schoolSelect.value;
   const date = dateInput.value;
-  if (!date) {
-    resultDiv.innerHTML = '날짜를 선택해주세요.';
+  if (!schoolValue || !date) {
+    resultDiv.innerHTML = '모든 항목을 입력해주세요.';
     return;
   }
+  const [officeCode, schoolCode, schoolName] = schoolValue.split('|');
   try {
-    const data = await fetchMeal(date);
+    const data = await fetchMeal(officeCode, schoolCode, date);
     const mealContent = parseMealData(data);
-    resultDiv.innerHTML = `<div style='font-size:15px;margin-bottom:8px;'><b>${SCHOOL_INFO.schoolName}</b> - ${formatDate(date)}</div>${mealContent}`;
+    resultDiv.innerHTML = `<div style='font-size:15px;margin-bottom:8px;'><b>${schoolName}</b> - ${formatDate(date)}</div>${mealContent}`;
   } catch (err) {
     resultDiv.innerHTML = err.message || 'API 요청 중 오류가 발생했습니다.';
   }
 });
 
-// 페이지 로드 시 자동 조회 (오늘)
-window.addEventListener('load', async () => {
-  resultDiv.innerHTML = '오늘의 급식을 불러오는 중...';
-  try {
-    const date = dateInput.value;
-    const data = await fetchMeal(date);
-    const mealContent = parseMealData(data);
-    resultDiv.innerHTML = `<div style='font-size:15px;margin-bottom:8px;'><b>${SCHOOL_INFO.schoolName}</b> - ${formatDate(date)}</div>${mealContent}`;
-  } catch (err) {
-    resultDiv.innerHTML = err.message || 'API 요청 중 오류가 발생했습니다.';
-  }
+// 페이지 로드 시: 기본 지역 선택 반영하여 학교 목록 자동 로드
+window.addEventListener('load', () => {
+  const event = new Event('change');
+  regionSelect.dispatchEvent(event);
 });
 

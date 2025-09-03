@@ -10,10 +10,31 @@
   <div class="container">
     <h1>학교 급식 조회</h1>
     <form id="meal-form">
-      <label>지역</label>
-      <div id="region" style="margin-bottom:8px;">부산광역시</div>
-      <label>고등학교명</label>
-      <div id="school-name" style="margin-bottom:8px;">대양고등학교</div>
+      <label for="region">지역</label>
+      <select id="region" required>
+        <option value="">지역 선택</option>
+        <option value="부산광역시" selected>부산광역시</option>
+        <option value="서울특별시">서울특별시</option>
+        <option value="대구광역시">대구광역시</option>
+        <option value="인천광역시">인천광역시</option>
+        <option value="광주광역시">광주광역시</option>
+        <option value="대전광역시">대전광역시</option>
+        <option value="울산광역시">울산광역시</option>
+        <option value="세종특별자치시">세종특별자치시</option>
+        <option value="경기도">경기도</option>
+        <option value="강원도">강원도</option>
+        <option value="충청북도">충청북도</option>
+        <option value="충청남도">충청남도</option>
+        <option value="전라북도">전라북도</option>
+        <option value="전라남도">전라남도</option>
+        <option value="경상북도">경상북도</option>
+        <option value="경상남도">경상남도</option>
+        <option value="제주특별자치도">제주특별자치도</option>
+      </select>
+      <label for="school-name">고등학교명</label>
+      <select id="school-name" required>
+        <option value="">먼저 지역을 선택하세요</option>
+      </select>
       <label for="date">날짜 선택</label>
       <input type="date" id="date" style="margin: 8px 0;" />
       <button type="submit">급식 조회</button>
